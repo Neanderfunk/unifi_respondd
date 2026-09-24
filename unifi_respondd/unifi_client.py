@@ -245,7 +245,12 @@ def get_infos():
                         tx_bytes24,
                     ) = get_ap_channel_usage(ssids, cfg)
 
-                    lat, lon = 0, 0
+                    # Lokaler Zusatz (Neanderfunk): ohne Koordinaten kein Ort,
+                    # statt 0/0. Ein AP ohne Ort steht dann in Liste und Graph
+                    # an seinem Router, aber nicht auf der Karte. Mit 0/0 stand
+                    # er auf "Null Island" im Golf von Guinea und zog den
+                    # Kartenausschnitt bis nach Afrika auf.
+                    lat, lon = None, None
                     neighbour_macs = []
                     if ap.get("snmp_location", None):
                         try:
@@ -254,6 +259,14 @@ def get_infos():
                             )
                         except Exception:
                             pass
+                    try:
+                        if lat is not None and lon is not None:
+                            lat, lon = float(lat), float(lon)
+                            # 0/0 ist kein Ort, sondern ein Eingabefehler
+                            if abs(lat) < 0.5 and abs(lon) < 0.5:
+                                lat, lon = None, None
+                    except (TypeError, ValueError):
+                        lat, lon = None, None
                     # Lokaler Zusatz (Neanderfunk): gemessener Router je AP vor
                     # dem Router der Site
                     offloader_mac = offloader_by_ap.get(
@@ -294,8 +307,8 @@ def get_infos():
                             channel24=channel24,
                             rx_bytes24=rx_bytes24,
                             tx_bytes24=tx_bytes24,
-                            latitude=float(lat),
-                            longitude=float(lon),
+                            latitude=lat,
+                            longitude=lon,
                             model=ap.get("model", None),
                             firmware=ap.get("version", None),
                             uptime=ap.get("uptime", None),

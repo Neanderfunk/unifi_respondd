@@ -139,3 +139,69 @@ def test_ap_meldet_ortscode_seines_routers():
     assert knoten.system.domain_code == "lvrmo-33_lvrmo"
     assert knoten.to_dict()["system"]["site_code"] == "lvrmo-33_lvrmo"
 
+
+def _knoten(lat, lon):
+    from unifi_respondd.respondd_client import ResponddClient
+    from unifi_respondd.unifi_client import Accesspoint, Accesspoints
+    ap = Accesspoint(
+        name="ap", mac="0c:ea:14:00:00:0c", snmp_location="",
+        client_count=0, client_count24=0, client_count5=0, channel5=None,
+        rx_bytes5=None, tx_bytes5=None, channel24=6, rx_bytes24=1, tx_bytes24=2,
+        latitude=lat, longitude=lon, model="U6-Lite", firmware="6.6.77",
+        uptime=1, contact="", load_avg=0.1, mem_used=1, mem_total=2, mem_buffer=1,
+        tx_bytes=2, rx_bytes=1, gateway="gw", gateway6="gw6",
+        gateway_nexthop="bbbbbbbbbb02", neighbour_macs=[ECHTER_ROUTER],
+        domain_code="lvrmo-33_lvrmo",
+    )
+    client = ResponddClient.__new__(ResponddClient)
+    client._aps = Accesspoints(accesspoints=[ap])
+    return client.getNodeInfos()[0].to_dict()
+
+
+def test_ohne_koordinaten_kein_ort():
+    """Ohne Koordinaten fehlt der Ort ganz, statt 0/0 (Null Island)."""
+    assert "location" not in _knoten(None, None)
+
+
+def test_mit_koordinaten_ort():
+    assert _knoten(51.2506, 6.9746)["location"] == {"latitude": 51.2506, "longitude": 6.9746}
+
+
+@patch("unifi_respondd.unifi_client.config.load_config")
+@patch("unifi_respondd.unifi_client.config.Config.from_dict")
+@patch("unifi_respondd.unifi_client.scrape")
+@patch("unifi_respondd.unifi_client.Controller")
+@patch("unifi_respondd.unifi_client.Nominatim")
+@patch("unifi_respondd.unifi_client.get_client_count_for_ap")
+@patch("unifi_respondd.unifi_client.get_ap_channel_usage")
+def test_leeres_und_nulleins_feld_ergibt_keinen_ort(
+    mock_chan, mock_clients, mock_nominatim, mock_controller,
+    mock_scrape, mock_from_dict, mock_load,
+):
+    cfg = Mock()
+    cfg.nodelist = "http://example.invalid/meshviewer.json"
+    cfg.ssid_regex = ".*freifunk.*"
+    cfg.version = "v5"
+    cfg.offloader_mac = {"fflvr": SITE_ROUTER}
+    cfg.fallback_domain = "unifi_respondd_fallback"
+    cfg.offloader_by_ap = ""
+    mock_from_dict.return_value = cfg
+    mock_load.return_value = {}
+    mock_scrape.return_value = {"nodes": [{"mac": SITE_ROUTER, "domain": "11_lvr"}]}
+    c = Mock()
+    mock_controller.return_value = c
+    c.get_sites.return_value = [{"name": "default", "desc": "fflvr"}]
+    leer = _ap("leer", "0c:ea:14:00:00:0d")
+    leer["snmp_location"] = ""
+    null = _ap("null", "0c:ea:14:00:00:0e")
+    null["snmp_location"] = "0, 0"
+    gut = _ap("gut", "0c:ea:14:00:00:0f")
+    c.get_aps.return_value = [leer, null, gut]
+    c.get_clients.return_value = []
+    mock_clients.return_value = (0, 0, 0)
+    mock_chan.return_value = (None, None, None, 6, 1, 2)
+
+    aps = {a.name: a for a in get_infos().accesspoints}
+    assert aps["leer"].latitude is None and aps["leer"].longitude is None
+    assert aps["null"].latitude is None and aps["null"].longitude is None
+    assert (aps["gut"].latitude, aps["gut"].longitude) == (51.2506, 6.9746)

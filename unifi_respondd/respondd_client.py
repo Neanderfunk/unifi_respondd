@@ -8,7 +8,7 @@ import time
 import zlib
 from typing import Dict, List
 
-from dataclasses_json import dataclass_json
+from dataclasses_json import config, dataclass_json
 
 from unifi_respondd import logger, unifi_client
 
@@ -111,7 +111,11 @@ class NodeInfo:
     software: SoftwareInfo
     hostname: str
     node_id: str
-    location: LocationInfo
+    # Lokaler Zusatz (Neanderfunk): ohne Koordinaten fehlt der Ort ganz,
+    # statt als 0/0 gemeldet zu werden
+    location: LocationInfo = dataclasses.field(
+        metadata=config(exclude=lambda wert: wert is None)
+    )
     hardware: HardwareInfo
     owner: OwnerInfo
     network: NetworkInfo
@@ -285,7 +289,11 @@ class ResponddClient:
                     ),
                     hostname=ap.name,
                     node_id=ap.mac.replace(":", ""),
-                    location=LocationInfo(latitude=ap.latitude, longitude=ap.longitude),
+                    location=(
+                        LocationInfo(latitude=ap.latitude, longitude=ap.longitude)
+                        if ap.latitude is not None and ap.longitude is not None
+                        else None
+                    ),
                     hardware=HardwareInfo(model=ap.model),
                     owner=OwnerInfo(contact=ap.contact),
                     network=NetworkInfo(
