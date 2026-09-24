@@ -52,6 +52,15 @@ class Config:
     # Accesspoint, gemessen aus der batman-Uebersetzungstabelle. Ist sie
     # gesetzt, gilt ihr Eintrag vor offloader_mac der Site.
     offloader_by_ap: str = ""
+    # Lokaler Zusatz (Neanderfunk): auf mehreren Schnittstellen lauschen und
+    # je Schnittstelle nur die APs melden, deren Router in deren Domain steht.
+    # Schnittstelle -> Liste der site_codes dieser Domain. Leer heisst: wie
+    # bisher eine Schnittstelle aus "interface", alle APs.
+    interfaces: Dict[str, List[str]] = dataclasses.field(default_factory=dict)
+    # Controllerdaten hoechstens so oft neu holen. Ohne das fragt jede
+    # einzelne Anfrage den Controller komplett ab, bei 48 Schnittstellen also
+    # 48-mal je Sammelrunde.
+    cache_seconds: int = 60
 
     @classmethod
     def from_dict(cls, cfg: Dict[str, str]) -> "Config":
@@ -81,6 +90,8 @@ class Config:
             interface=cfg["interface"],
             verbose=cfg["verbose"],
             offloader_by_ap=cfg.get("offloader_by_ap", ""),
+            interfaces=cfg.get("interfaces") or {},
+            cache_seconds=int(cfg.get("cache_seconds", 60)),
         )
 
 

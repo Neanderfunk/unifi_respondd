@@ -250,6 +250,7 @@ class ResponddClient:
     def __init__(self, config):
         self._config = config
         self._aps = None
+        self._aps_zeit = 0.0
         self._timeStart = time.time()
         self._timeStop = time.time()
         self._sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
@@ -391,6 +392,82 @@ class ResponddClient:
             )
         return neighbours
 
+    # --- Lokaler Zusatz (Neanderfunk): mehrere Schnittstellen, je Domain gefiltert ---
+
+    def frische_aps(self):
+        """Controllerdaten holen, aber hoechstens alle cache_seconds."""
+        alter = time.time() - self._aps_zeit
+        if self._aps is None or alter >= getattr(self._config, "cache_seconds", 0):
+            aps = unifi_client.get_infos()
+            if aps is not None:
+                self._aps = aps
+                self._aps_zeit = time.time()
+        return self._aps
+
+    def ids_fuer(self, site_codes):
+        """node_ids der APs, deren Router einen dieser site_codes meldet."""
+        erlaubt = set(site_codes or [])
+        return {
+            ap.mac.replace(":", "")
+            for ap in (self._aps.accesspoints if self._aps else [])
+            if ap.domain_code in erlaubt
+        }
+
+    @staticmethod
+    def schnittstelle_aus(ancdata):
+        """Ankunftsschnittstelle aus IPV6_PKTINFO (in6_addr, ifindex)."""
+        for ebene, art, daten in ancdata:
+            if ebene == socket.IPPROTO_IPV6 and art == socket.IPV6_PKTINFO:
+                ifindex = struct.unpack("I", daten[16:20])[0]
+                try:
+                    return socket.if_indextoname(ifindex)
+                except OSError:
+                    return None
+        return None
+
+    def listenMulti(self):
+        """Wie listenMulticast, liefert zusaetzlich die Ankunftsschnittstelle."""
+        msg, ancdata, _flags, sourceAddress = self._sock.recvmsg(
+            2048, socket.CMSG_SPACE(20)
+        )
+        return str(msg, "UTF-8").split(" "), sourceAddress, self.schnittstelle_aus(ancdata)
+
+    def startMulti(self):
+        """Auf allen Schnittstellen aus "interfaces" lauschen.
+
+        Jede Anfrage wird mit genau den APs beantwortet, deren Router in der
+        Domain der Ankunftsschnittstelle steht. So sieht jeder Sammler in
+        jedem Mesh, was dorthin gehoert, wie bei einem echten Knoten; auch
+        fremde Sammler, die im Mesh fragen (adorfer 25.09.2026).
+        """
+        schnittstellen = self._config.interfaces
+        self._sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_RECVPKTINFO, 1)
+        self._sock.bind(("::", self._config.multicast_port))
+        for ifname in schnittstellen:
+            try:
+                self.joinMCAST(self._sock, self._config.multicast_address, ifname)
+            except OSError as ex:
+                logger.error("join %s: %s" % (ifname, ex))
+        while True:
+            msgSplit, sourceAddress, ifname = self.listenMulti()
+            if ifname not in schnittstellen:
+                continue
+            self._timeStart = time.time()
+            if self.frische_aps() is None:
+                continue
+            nur = self.ids_fuer(schnittstellen[ifname])
+            if not nur:
+                continue
+            responseStruct = {}
+            if msgSplit[0] == "GET":
+                for request in msgSplit[1:]:
+                    responseStruct[request] = self.buildStruct(request)
+                self.sendStruct(sourceAddress, responseStruct, True, nur)
+            else:
+                responseStruct = self.buildStruct(msgSplit[0])
+                self.sendStruct(sourceAddress, responseStruct, False, nur)
+            self._timeStop = time.time()
+
     def listenMulticast(self):
         msg, sourceAddress = self._sock.recvfrom(2048)
         logger.info("Using multicast method")
@@ -408,6 +485,8 @@ class ResponddClient:
 
     def start(self):
         """This method starts the respondd client."""
+        if getattr(self._config, "interfaces", None) and self._config.multicast_enabled:
+            return self.startMulti()
         self._sock.setsockopt(
             socket.SOL_SOCKET,
             socket.SO_BINDTODEVICE,
@@ -470,13 +549,18 @@ class ResponddClient:
 
         return responseClass
 
-    def sendStruct(self, destAddress, responseStruct, withCompression):
-        """This method sends the response structure to the respondd server."""
+    def sendStruct(self, destAddress, responseStruct, withCompression, nur=None):
+        """This method sends the response structure to the respondd server.
+
+        Lokaler Zusatz: mit nur (Menge von node_ids) gehen nur diese Knoten raus.
+        """
         logger.debug(
             str(destAddress[0]) + " " + str(destAddress[1]) + " " + str(responseStruct)
         )
 
         merged = self.merge_node(responseStruct)
+        if nur is not None:
+            merged = {k: v for k, v in merged.items() if k in nur}
         for infos in merged.values():
             node = {}
             for key, info in infos.items():
