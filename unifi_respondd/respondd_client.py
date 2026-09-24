@@ -86,6 +86,13 @@ class NetworkInfo:
 @dataclasses.dataclass
 class SystemInfo:
     domain_code: str
+    # Lokaler Zusatz (Neanderfunk): auch als site_code melden. Karten, die
+    # je Ort nach site_code filtern, liessen die APs sonst heraus, so wie sie
+    # es mit Supernodes tun, die nur domain_code melden. Der Wert ist der des
+    # Freifunk-Knotens, hinter dem der AP haengt: in der nodelist steht unter
+    # "domain" dessen gemeldeter Code (nef-05_mon, dus-15_mrh_EOL), und genau
+    # den erbt der AP.
+    site_code: str = ""
 
 
 @dataclass_json
@@ -287,7 +294,9 @@ class ResponddClient:
                             "bat0": IntInfo(interfaces=InterfacesInfo(other=[ap.mac]))
                         },
                     ),
-                    system=SystemInfo(domain_code=ap.domain_code),
+                    system=SystemInfo(
+                        domain_code=ap.domain_code, site_code=ap.domain_code
+                    ),
                 )
             )
         return nodes

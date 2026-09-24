@@ -115,3 +115,27 @@ def test_router_je_ap_vor_router_der_site(
     assert ungemessen.neighbour_macs[0] == SITE_ROUTER
     assert ungemessen.domain_code == "11_lvr"
 
+
+def test_ap_meldet_ortscode_seines_routers():
+    """Der AP meldet den Code seines Routers auch als site_code, sonst fiele
+    er aus jeder Ortskarte heraus, die nach site_code filtert."""
+    from unifi_respondd.respondd_client import ResponddClient
+    from unifi_respondd.unifi_client import Accesspoint, Accesspoints
+
+    ap = Accesspoint(
+        name="lvr-ap", mac="0c:ea:14:00:00:0a", snmp_location="51.2506, 6.9746",
+        client_count=1, client_count24=1, client_count5=0, channel5=None,
+        rx_bytes5=None, tx_bytes5=None, channel24=6, rx_bytes24=1, tx_bytes24=2,
+        latitude=51.2506, longitude=6.9746, model="U6-Lite", firmware="6.6.77",
+        uptime=1, contact="", load_avg=0.1, mem_used=1, mem_total=2, mem_buffer=1,
+        tx_bytes=2, rx_bytes=1, gateway="gw", gateway6="gw6",
+        gateway_nexthop=ECHTER_ROUTER.replace(":", ""),
+        neighbour_macs=[ECHTER_ROUTER], domain_code="lvrmo-33_lvrmo",
+    )
+    client = ResponddClient.__new__(ResponddClient)
+    client._aps = Accesspoints(accesspoints=[ap])
+    knoten = client.getNodeInfos()[0]
+    assert knoten.system.site_code == "lvrmo-33_lvrmo"
+    assert knoten.system.domain_code == "lvrmo-33_lvrmo"
+    assert knoten.to_dict()["system"]["site_code"] == "lvrmo-33_lvrmo"
+
