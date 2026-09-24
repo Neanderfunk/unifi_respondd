@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import dataclasses
+import json
 import re
 import time
 from typing import List
@@ -141,6 +142,32 @@ def scrape(url):
         logger.error("Error: %s" % (ex))
 
 
+def load_offloader_by_ap(path):
+    """Lokaler Zusatz (Neanderfunk): Router je Accesspoint aus einer Datei.
+
+    Die Datei erzeugt der Kartenserver aus der batman-Uebersetzungstabelle:
+    {"aps": {"<ap-mac>": {"router": "<primaere mac des knotens>", ...}}}.
+    Damit haengt jeder AP am Router, hinter dem er wirklich steht, und nicht
+    am einen Router seiner Site. Fehlt die Datei oder ist sie kaputt, bleibt
+    alles wie ohne Zusatz.
+    """
+    # Nur ein Pfad als Text zaehlt. Ein anders gesetzter Wert soll den Dienst
+    # nicht umwerfen, sondern wirken wie ein fehlender.
+    if not isinstance(path, str) or not path:
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            aps = json.load(f).get("aps") or {}
+    except (OSError, ValueError) as ex:
+        logger.error("offloader_by_ap %s: %s" % (path, ex))
+        return {}
+    return {
+        ap.lower(): eintrag["router"].lower()
+        for ap, eintrag in aps.items()
+        if isinstance(eintrag, dict) and eintrag.get("router")
+    }
+
+
 def get_infos():
     """This function gathers all the information and returns a list of Accesspoint objects."""
     cfg = config.Config.from_dict(config.load_config())
@@ -158,6 +185,7 @@ def get_infos():
         logger.error("Error: %s" % (ex))
         return
     geolookup = Nominatim(user_agent="ffmuc_respondd")
+    offloader_by_ap = load_offloader_by_ap(cfg.offloader_by_ap)
     aps = Accesspoints(accesspoints=[])
     for site in c.get_sites():
         if cfg.version == "UDMP-unifiOS":
@@ -226,15 +254,17 @@ def get_infos():
                             )
                         except Exception:
                             pass
+                    # Lokaler Zusatz (Neanderfunk): gemessener Router je AP vor
+                    # dem Router der Site
+                    offloader_mac = offloader_by_ap.get(
+                        (ap.get("mac") or "").lower()
+                    ) or cfg.offloader_mac.get(site["desc"], "")
                     try:
-                        neighbour_macs.append(cfg.offloader_mac.get(site["desc"], None))
-                        offloader_id = cfg.offloader_mac.get(site["desc"], "").replace(
-                            ":", ""
-                        )
+                        neighbour_macs.append(offloader_mac or None)
+                        offloader_id = offloader_mac.replace(":", "")
                         offloader = list(
                             filter(
-                                lambda x: x["mac"]
-                                == cfg.offloader_mac.get(site["desc"], ""),
+                                lambda x: x["mac"] == offloader_mac,
                                 ffnodes["nodes"],
                             )
                         )[0]

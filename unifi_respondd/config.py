@@ -48,6 +48,10 @@ class Config:
 
     version: str = "v5"
     ssl_verify: bool = True
+    # Lokaler Zusatz (Neanderfunk): Datei mit dem Freifunk-Router je
+    # Accesspoint, gemessen aus der batman-Uebersetzungstabelle. Ist sie
+    # gesetzt, gilt ihr Eintrag vor offloader_mac der Site.
+    offloader_by_ap: str = ""
 
     @classmethod
     def from_dict(cls, cfg: Dict[str, str]) -> "Config":
@@ -76,6 +80,7 @@ class Config:
             unicast_port=cfg["unicast_port"],
             interface=cfg["interface"],
             verbose=cfg["verbose"],
+            offloader_by_ap=cfg.get("offloader_by_ap", ""),
         )
 
 
