@@ -13,9 +13,18 @@ also einzeln übernehmen oder bei einem Upstream-Update einzeln nachziehen.
 | Ortscode als `site_code` | APs erscheinen auf Karten, die je Ort filtern |
 | Kein Ort statt 0/0 | APs ohne Koordinaten landen nicht auf "Null Island" |
 | Alle Schnittstellen, je Domain gefiltert | ein Prozess für viele Domains; Controller zwischengespeichert |
+| Koordinaten ohne Adresssuche | keine Anfragen an Nominatim; gängige Schreibweisen und aus Google Maps kopierte Adressen werden gesäubert |
 
 Alle neuen Konfigurationsschlüssel sind optional. Ohne sie verhält sich der
-Zweig wie das Original.
+Zweig wie das Original, mit zwei Ausnahmen: APs ohne Koordinaten bekommen
+keinen Ort statt 0/0, und das Feld SNMP Location wird nur noch als Koordinate
+gelesen, nie mehr als Adresse bei Nominatim nachgeschlagen.
+
+Lesbar sind im Feld SNMP Location unter anderem `51.2874, 6.3538`,
+`51,2874 6,3538`, `51,2874,6,3538`, dazu Leerzeichen, `&`, `?`, Klammern
+und Anführungszeichen an den Rändern sowie aus Google Maps kopierte Adressen
+(`!3d…!4d…`, `?q=…`, `/@…,17z`). Buchstaben wie `N` oder `W` machen das Feld
+unlesbar, statt stillschweigend das Vorzeichen zu verlieren.
 
 Lizenz wie das Original: GPL-3.0.
 

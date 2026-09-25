@@ -62,12 +62,11 @@ def _ap(name, mac):
 @patch("unifi_respondd.unifi_client.config.Config.from_dict")
 @patch("unifi_respondd.unifi_client.scrape")
 @patch("unifi_respondd.unifi_client.Controller")
-@patch("unifi_respondd.unifi_client.Nominatim")
 @patch("unifi_respondd.unifi_client.get_client_count_for_ap")
 @patch("unifi_respondd.unifi_client.get_ap_channel_usage")
-@patch("unifi_respondd.unifi_client.get_location_by_address")
+@patch("unifi_respondd.unifi_client.parse_location")
 def test_router_je_ap_vor_router_der_site(
-    mock_loc, mock_chan, mock_clients, mock_nominatim, mock_controller,
+    mock_loc, mock_chan, mock_clients, mock_controller,
     mock_scrape, mock_from_dict, mock_load, tmp_path,
 ):
     zuordnung = tmp_path / "zuordnung.json"
@@ -171,11 +170,10 @@ def test_mit_koordinaten_ort():
 @patch("unifi_respondd.unifi_client.config.Config.from_dict")
 @patch("unifi_respondd.unifi_client.scrape")
 @patch("unifi_respondd.unifi_client.Controller")
-@patch("unifi_respondd.unifi_client.Nominatim")
 @patch("unifi_respondd.unifi_client.get_client_count_for_ap")
 @patch("unifi_respondd.unifi_client.get_ap_channel_usage")
 def test_leeres_und_nulleins_feld_ergibt_keinen_ort(
-    mock_chan, mock_clients, mock_nominatim, mock_controller,
+    mock_chan, mock_clients, mock_controller,
     mock_scrape, mock_from_dict, mock_load,
 ):
     cfg = Mock()

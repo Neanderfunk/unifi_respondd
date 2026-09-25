@@ -3,11 +3,9 @@
 import dataclasses
 import json
 import re
-import time
 from typing import List
+from urllib.parse import unquote
 
-from geopy.geocoders import Nominatim
-from geopy.point import Point
 from pyunifi.controller import Controller
 from requests import get as rget
 
@@ -118,20 +116,61 @@ def get_ap_channel_usage(ssids, cfg):
     return channel5, rx_bytes5, tx_bytes5, channel24, rx_bytes24, tx_bytes24
 
 
-def get_location_by_address(address, app, attempts=3):
-    """This function returns latitude and longitude of a given address."""
-    try:
-        point = Point().from_string(address)
-        return point.latitude, point.longitude
-    except Exception:
-        if attempts <= 0:
-            raise
-        try:
-            time.sleep(1)
-            geocode = app.geocode(address)
-            return geocode.raw["lat"], geocode.raw["lon"]
-        except Exception:
-            return get_location_by_address(address, app, attempts - 1)
+# Lokaler Zusatz (Neanderfunk): Koordinaten nur aus dem Feld selbst, keine
+# Adresssuche bei Nominatim. Die schickte jeden unlesbaren Text an einen
+# fremden Dienst und nahm, was zurueckkam, auch einen Ort am anderen Ende der
+# Welt. Getippt wird das Feld von Hand, deshalb werden die ueblichen
+# Schreibweisen vorher gesaeubert: Dezimalpunkt oder -komma, getrennt durch
+# Komma, Semikolon oder Leerzeichen. Nachkommastellen sind Pflicht, sonst
+# waere "51,6" nicht eindeutig. Vorn und hinten faellt alles weg, was weder
+# Ziffer noch Buchstabe ist (Leerzeichen, "&" und "?" aus kopierten URLs,
+# Klammern, Anfuehrungszeichen). Buchstaben bleiben stehen: ein verworfenes
+# "S" oder "W" drehte stillschweigend das Vorzeichen um, dann lieber
+# unlesbar.
+_ZAHL = r"(-?\d+[.,]\d+)"
+_ORT = re.compile(r"^" + _ZAHL + r"(?:\s*[,;]\s*|\s+)" + _ZAHL + r"$")
+_RAND_VORN = re.compile(r"^[^0-9A-Za-z-]+")
+_RAND_HINTEN = re.compile(r"[^0-9A-Za-z]+$")
+# Unsauber aus der Adresszeile von Google Maps kopiert: zuerst der gesetzte
+# Pin (!3d...!4d...), dann ein Parameter (?q=, ll=, ...), zuletzt die
+# Kartenmitte (/@Breite,Laenge,17z). Die Mitte ist ungenauer als der Pin,
+# aber immer noch dort, wo jemand hingeschaut hat.
+_PUNKT = r"(-?\d+\.\d+)"
+_GOOGLE = [
+    re.compile(r"!3d" + _PUNKT + r"!4d" + _PUNKT),
+    re.compile(
+        r"(?:^|[?&/])(?:q|query|ll|sll|center|destination|daddr)="
+        + _PUNKT + r"(?:\s*[,;]\s*|\s+)" + _PUNKT
+    ),
+    re.compile(r"@" + _PUNKT + r"\s*,\s*" + _PUNKT),
+]
+
+
+def _pruefen(lat, lon):
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    # 0/0 ist kein Ort, sondern ein Eingabefehler
+    if abs(lat) < 0.5 and abs(lon) < 0.5:
+        return None
+    return lat, lon
+
+
+def parse_location(text):
+    """Liest "Breite, Laenge" aus dem Feld SNMP Location, sonst None."""
+    if not isinstance(text, str):
+        return None
+    # %2C, %20 und + aus URLs zu Komma und Leerzeichen
+    text = unquote(text).replace("+", " ").replace("\u00a0", " ")
+    for muster in _GOOGLE:
+        m = muster.search(text)
+        if m:
+            return _pruefen(float(m.group(1)), float(m.group(2)))
+    text = _RAND_HINTEN.sub("", _RAND_VORN.sub("", text))
+    m = _ORT.match(text)
+    if not m:
+        return None
+    lat, lon = (float(z.replace(",", ".")) for z in m.groups())
+    return _pruefen(lat, lon)
 
 
 def scrape(url):
@@ -184,7 +223,6 @@ def get_infos():
     except Exception as ex:
         logger.error("Error: %s" % (ex))
         return
-    geolookup = Nominatim(user_agent="ffmuc_respondd")
     offloader_by_ap = load_offloader_by_ap(cfg.offloader_by_ap)
     aps = Accesspoints(accesspoints=[])
     for site in c.get_sites():
@@ -252,21 +290,9 @@ def get_infos():
                     # Kartenausschnitt bis nach Afrika auf.
                     lat, lon = None, None
                     neighbour_macs = []
-                    if ap.get("snmp_location", None):
-                        try:
-                            lat, lon = get_location_by_address(
-                                ap["snmp_location"], geolookup
-                            )
-                        except Exception:
-                            pass
-                    try:
-                        if lat is not None and lon is not None:
-                            lat, lon = float(lat), float(lon)
-                            # 0/0 ist kein Ort, sondern ein Eingabefehler
-                            if abs(lat) < 0.5 and abs(lon) < 0.5:
-                                lat, lon = None, None
-                    except (TypeError, ValueError):
-                        lat, lon = None, None
+                    ort = parse_location(ap.get("snmp_location"))
+                    if ort:
+                        lat, lon = ort
                     # Lokaler Zusatz (Neanderfunk): gemessener Router je AP vor
                     # dem Router der Site
                     offloader_mac = offloader_by_ap.get(

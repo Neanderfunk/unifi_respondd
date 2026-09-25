@@ -11,7 +11,7 @@ from unifi_respondd.unifi_client import (
     get_ap_channel_usage,
     get_client_count_for_ap,
     get_infos,
-    get_location_by_address,
+    parse_location,
     scrape,
 )
 
@@ -340,44 +340,97 @@ class TestGetApChannelUsage:
         assert tx24 == 0
 
 
-class TestGetLocationByAddress:
-    """Test the get_location_by_address function."""
+class TestParseLocation:
+    """Koordinaten aus SNMP Location, ohne Adresssuche (Neanderfunk)."""
 
-    def test_valid_point_string(self):
-        """Test with a valid point string (lat, lon)."""
-        address = "48.1351, 11.5820"
-        app = Mock()
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "51.287448314 6.353809834",
+            "51.287448314, 6.353809834",
+            "51,287448314 6,353809834",
+            "51,287448314, 6,353809834",
+            "51.287448314,6.353809834",
+            "51,287448314,6,353809834",
+            "  51.287448314 ;  6.353809834 ",
+            "51.287448314\u00a06.353809834",
+            "      51.287448314, 6.353809834      ",
+            "\t51,287448314   ,   6,353809834\n",
+            "51.287448314          6.353809834",
+            "\u00a0 51,287448314 , 6,353809834 \u00a0",
+            "&51.287448314,6.353809834&",
+            "?51.287448314, 6.353809834?",
+            "  ?&51,287448314 6,353809834&?  ",
+            "(51.287448314, 6.353809834)",
+            "\"51.287448314, 6.353809834\".",
+        ],
+    )
+    def test_schreibweisen(self, text):
+        lat, lon = parse_location(text)
+        assert lat == pytest.approx(51.287448314)
+        assert lon == pytest.approx(6.353809834)
 
-        lat, lon = get_location_by_address(address, app)
-        assert lat == pytest.approx(48.1351, rel=1e-4)
-        assert lon == pytest.approx(11.5820, rel=1e-4)
+    def test_negativ(self):
+        assert parse_location("-33.8688, 151.2093") == (-33.8688, 151.2093)
+        assert parse_location("?-33.8688, -151.2093&") == (-33.8688, -151.2093)
 
-    @patch("unifi_respondd.unifi_client.time.sleep")
-    def test_geocoding_fallback(self, mock_sleep):
-        """Test fallback to geocoding when point parsing fails."""
-        address = "Munich, Germany"
-        app = Mock()
-        app.geocode.return_value = Mock(raw={"lat": "48.1351", "lon": "11.5820"})
+    @pytest.mark.parametrize(
+        "text",
+        [
+            None,
+            "",
+            "Munich, Germany",
+            "Äquatorweg 1, Bedburg-Hau",
+            "51,6",
+            "51 6",
+            "51.2874",
+            "0, 0",
+            "0.0000, 0.0000",
+            "91.0, 6.35",
+            "51.28, 181.0",
+            "51.28, 6.35, 12.0",
+            "51.28 N, 6.35 E",
+            "51.28, 6.35 W",
+            "S 51.28, 6.35",
+            "lat=51.28&lon=6.35",
+            "&?",
+        ],
+    )
+    def test_nicht_lesbar(self, text):
+        assert parse_location(text) is None
 
-        lat, lon = get_location_by_address(address, app)
-        assert lat == "48.1351"
-        assert lon == "11.5820"
-        mock_sleep.assert_called_once_with(1)
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "https://www.google.com/maps/place/%C3%84quatorweg/@51.2870000,6.3500000,17z/"
+            "data=!3m1!4b1!4m6!3m5!1s0x0:0x0!8m2!3d51.287448314!4d6.353809834!16s",
+            "https://www.google.com/maps/@51.287448314,6.353809834,17z?entry=ttu",
+            "@51.287448314,6.353809834,17z",
+            "/@51.287448314,6.353809834,150m/data=!3m1!1e3",
+            "https://maps.google.com/?q=51.287448314,6.353809834&z=17",
+            "https://www.google.com/maps/search/?api=1&query=51.287448314%2C6.353809834",
+            "q=51.287448314+6.353809834",
+            "&q=51.287448314,%206.353809834&",
+            "+51.287448314, +6.353809834",
+        ],
+    )
+    def test_google_maps(self, text):
+        lat, lon = parse_location(text)
+        assert lat == pytest.approx(51.287448314)
+        assert lon == pytest.approx(6.353809834)
 
-    @patch("unifi_respondd.unifi_client.time.sleep")
-    @patch("unifi_respondd.unifi_client.get_location_by_address")
-    def test_geocoding_failure_recursion(self, mock_get_location, mock_sleep):
-        """Test recursion when geocoding fails."""
-        address = "Invalid Address"
-        app = Mock()
-        app.geocode.side_effect = Exception("Geocoding failed")
+    def test_google_pin_vor_kartenmitte(self):
+        text = "/@52.0,7.0,17z/data=!3d51.287448314!4d6.353809834"
+        assert parse_location(text) == (51.287448314, 6.353809834)
 
-        # Mock the recursive call to avoid infinite recursion in test
-        mock_get_location.return_value = (0.0, 0.0)
+    def test_google_ohne_koordinaten(self):
+        assert parse_location("https://www.google.com/maps/place/Bedburg-Hau") is None
+        assert parse_location("https://maps.app.goo.gl/AbCdEf123") is None
 
-        # Call the mocked version
-        result = mock_get_location(address, app)
-        assert result == (0.0, 0.0)
+    def test_keine_adresssuche(self):
+        import unifi_respondd.unifi_client as uc
+
+        assert not hasattr(uc, "Nominatim")
 
 
 class TestScrape:
@@ -412,12 +465,10 @@ class TestGetInfos:
     @patch("unifi_respondd.unifi_client.config.Config.from_dict")
     @patch("unifi_respondd.unifi_client.scrape")
     @patch("unifi_respondd.unifi_client.Controller")
-    @patch("unifi_respondd.unifi_client.Nominatim")
     @patch("unifi_respondd.unifi_client.logger.error")
     def test_get_infos_controller_error(
         self,
         mock_logger,
-        mock_nominatim,
         mock_controller,
         mock_scrape,
         mock_config_from_dict,
@@ -439,10 +490,8 @@ class TestGetInfos:
     @patch("unifi_respondd.unifi_client.config.Config.from_dict")
     @patch("unifi_respondd.unifi_client.scrape")
     @patch("unifi_respondd.unifi_client.Controller")
-    @patch("unifi_respondd.unifi_client.Nominatim")
     def test_get_infos_basic_success(
         self,
-        mock_nominatim,
         mock_controller,
         mock_scrape,
         mock_config_from_dict,
@@ -481,16 +530,14 @@ class TestGetInfos:
     @patch("unifi_respondd.unifi_client.config.Config.from_dict")
     @patch("unifi_respondd.unifi_client.scrape")
     @patch("unifi_respondd.unifi_client.Controller")
-    @patch("unifi_respondd.unifi_client.Nominatim")
     @patch("unifi_respondd.unifi_client.get_client_count_for_ap")
     @patch("unifi_respondd.unifi_client.get_ap_channel_usage")
-    @patch("unifi_respondd.unifi_client.get_location_by_address")
+    @patch("unifi_respondd.unifi_client.parse_location")
     def test_get_infos_with_access_points(
         self,
         mock_get_location,
         mock_get_channel,
         mock_get_clients,
-        mock_nominatim,
         mock_controller,
         mock_scrape,
         mock_config_from_dict,
@@ -578,10 +625,8 @@ class TestGetInfos:
     @patch("unifi_respondd.unifi_client.config.Config.from_dict")
     @patch("unifi_respondd.unifi_client.scrape")
     @patch("unifi_respondd.unifi_client.Controller")
-    @patch("unifi_respondd.unifi_client.Nominatim")
     def test_get_infos_filters_non_uap_devices(
         self,
-        mock_nominatim,
         mock_controller,
         mock_scrape,
         mock_config_from_dict,
@@ -633,10 +678,8 @@ class TestGetInfos:
     @patch("unifi_respondd.unifi_client.config.Config.from_dict")
     @patch("unifi_respondd.unifi_client.scrape")
     @patch("unifi_respondd.unifi_client.Controller")
-    @patch("unifi_respondd.unifi_client.Nominatim")
     def test_get_infos_filters_aps_without_matching_ssid(
         self,
-        mock_nominatim,
         mock_controller,
         mock_scrape,
         mock_config_from_dict,
