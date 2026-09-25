@@ -138,3 +138,12 @@ def test_port_wird_geteilt():
     assert c._sock.getsockname()[1] == port
     c._sock.close()
     andere.close()
+
+
+def test_sendefehler_beendet_nicht_den_dienst():
+    """sendto scheitert (volle Nachbartabelle: EINVAL); die uebrigen Knoten
+    gehen trotzdem raus, und es gibt keine Ausnahme."""
+    c = _client(APS)
+    c._sock.sendto.side_effect = [OSError(22, "Invalid argument"), None, None]
+    c.sendStruct(("fe80::1", 40000, 0, 5), {"nodeinfo": c.getNodeInfos()}, True)
+    assert c._sock.sendto.call_count == 3

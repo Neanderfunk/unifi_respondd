@@ -626,4 +626,11 @@ class ResponddClient:
                 responseData = encoder.compress(responseData)
                 responseData += encoder.flush()
 
-            self._sock.sendto(responseData, destAddress)
+            # Lokaler Zusatz (Neanderfunk): ein Paket, das nicht rausgeht,
+            # darf den Dienst nicht beenden. Am 25.09.2026 lief die
+            # IPv6-Nachbartabelle ueber, sendto scheiterte mit EINVAL, und
+            # der Dienst stuerzte alle fuenf Minuten ab.
+            try:
+                self._sock.sendto(responseData, destAddress)
+            except OSError as ex:
+                logger.warning("sendto %s: %s" % (destAddress[0], ex))
