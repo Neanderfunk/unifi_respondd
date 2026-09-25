@@ -10,7 +10,7 @@ from typing import Dict, List
 
 from dataclasses_json import config, dataclass_json
 
-from unifi_respondd import logger, unifi_client
+from unifi_respondd import logger, self_node, unifi_client
 
 
 @dataclasses.dataclass
@@ -499,21 +499,35 @@ class ResponddClient:
             msgSplit, sourceAddress, ifname = self.listenMulti()
             if ifname not in schnittstellen:
                 continue
-            self._timeStart = time.time()
-            if self.frische_aps() is None:
-                continue
-            nur = self.ids_fuer(schnittstellen[ifname])
-            if not nur:
-                continue
-            responseStruct = {}
-            if msgSplit[0] == "GET":
-                for request in msgSplit[1:]:
-                    responseStruct[request] = self.buildStruct(request)
-                self.sendStruct(sourceAddress, responseStruct, True, nur)
-            else:
-                responseStruct = self.buildStruct(msgSplit[0])
-                self.sendStruct(sourceAddress, responseStruct, False, nur)
-            self._timeStop = time.time()
+            self.beantworte(msgSplit, sourceAddress, ifname)
+
+    def beantworte(self, msgSplit, sourceAddress, ifname):
+        """Eine Anfrage auf einem Interface aus "interfaces" beantworten."""
+        schnittstellen = self._config.interfaces
+        self._timeStart = time.time()
+        # APs nur, wenn der Controller Daten hat; der Rechner selbst
+        # antwortet auch ohne (self_node.py).
+        aps = self.frische_aps()
+        nur = self.ids_fuer(schnittstellen[ifname]) if aps is not None else set()
+        selbst = self_node.build(
+            getattr(self._config, "self_node", {}), ifname, schnittstellen[ifname]
+        )
+        if not nur and not selbst:
+            return
+        if selbst:
+            nur = set(nur) | {selbst["nodeinfo"].node_id}
+        responseStruct = {}
+        if msgSplit[0] == "GET":
+            for request in msgSplit[1:]:
+                infos = list(self.buildStruct(request) or []) if aps is not None else []
+                if request in selbst:
+                    infos.append(selbst[request])
+                responseStruct[request] = infos
+            self.sendStruct(sourceAddress, responseStruct, True, nur)
+        elif aps is not None:
+            responseStruct = self.buildStruct(msgSplit[0])
+            self.sendStruct(sourceAddress, responseStruct, False, nur)
+        self._timeStop = time.time()
 
     def listenMulticast(self):
         msg, sourceAddress = self._sock.recvfrom(2048)
