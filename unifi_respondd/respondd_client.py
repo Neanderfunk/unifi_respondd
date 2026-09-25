@@ -489,6 +489,10 @@ class ResponddClient:
         """
         schnittstellen = self._config.interfaces
         self._sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_RECVPKTINFO, 1)
+        # Port 1001 teilen, etwa mit mesh-announce, das fuer den Rechner selbst
+        # antwortet. Multicast-Anfragen bekommen dann beide; eine
+        # Unicast-Anfrage nur einer von beiden.
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._sock.bind(("::", self._config.multicast_port))
         for ifname in schnittstellen:
             try:

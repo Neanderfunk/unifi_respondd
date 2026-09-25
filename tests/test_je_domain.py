@@ -117,3 +117,24 @@ def test_controller_fehler_behaelt_alte_daten():
                return_value=None), \
          patch("unifi_respondd.respondd_client.time.time", return_value=9999.0):
         assert c.frische_aps().accesspoints == APS
+
+
+def test_port_wird_geteilt():
+    """Zwei Dienste auf demselben Port bekommen beide die Multicast-Anfragen;
+    dafuer muessen beide SO_REUSEADDR setzen (mesh-announce tut es)."""
+    andere = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+    andere.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    andere.bind(("::", 0))
+    port = andere.getsockname()[1]
+    c = ResponddClient.__new__(ResponddClient)
+    c._config = Mock(interfaces={}, multicast_port=port, multicast_address="ff02::1")
+    c._sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+    with patch.object(ResponddClient, "listenMulti", side_effect=StopIteration):
+        try:
+            c.startMulti()
+        except StopIteration:
+            pass
+    assert c._sock.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR) == 1
+    assert c._sock.getsockname()[1] == port
+    c._sock.close()
+    andere.close()
