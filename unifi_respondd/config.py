@@ -61,9 +61,6 @@ class Config:
     # einzelne Anfrage den Controller komplett ab, bei 48 Schnittstellen also
     # 48-mal je Sammelrunde.
     cache_seconds: int = 60
-    # Lokaler Zusatz (Neanderfunk): der Rechner selbst als Knoten je
-    # Interface aus "interfaces" (self_node.py). Leer: aus.
-    self_node: Dict[str, str] = dataclasses.field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, cfg: Dict[str, str]) -> "Config":
@@ -95,7 +92,6 @@ class Config:
             offloader_by_ap=cfg.get("offloader_by_ap", ""),
             interfaces=cfg.get("interfaces") or {},
             cache_seconds=int(cfg.get("cache_seconds", 60)),
-            self_node=cfg.get("self_node") or {},
         )
 
 

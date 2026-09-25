@@ -15,7 +15,6 @@ also einzeln übernehmen oder bei einem Upstream-Update einzeln nachziehen.
 | Alle Schnittstellen, je Domain gefiltert | ein Prozess für viele Domains; Controller zwischengespeichert |
 | Koordinaten ohne Adresssuche | keine Anfragen an Nominatim; gängige Schreibweisen und aus Google Maps kopierte Adressen werden gesäubert |
 | Airtime aus dem Controller | Kanalauslastung je Band (cu_total, cu_self_rx/tx) als Airtime-Zähler wie bei Gluon; vorher standen Bytezähler in den Airtime-Feldern |
-| Der Rechner selbst als Knoten (`self_node`) | antwortet je Mesh-Interface auch für sich: Name, Kontakt, Tunnel, batman-Nachbarn; sonst wäre er für fremde Karten ein dunkler Knoten |
 
 Alle neuen Konfigurationsschlüssel sind optional. Ohne sie verhält sich der
 Zweig wie das Original, mit zwei Ausnahmen: APs ohne Koordinaten bekommen
