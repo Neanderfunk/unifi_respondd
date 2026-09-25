@@ -124,9 +124,8 @@ def get_ap_channel_usage(ssids, cfg):
 # Komma, Semikolon oder Leerzeichen. Nachkommastellen sind Pflicht, sonst
 # waere "51,6" nicht eindeutig. Vorn und hinten faellt alles weg, was weder
 # Ziffer noch Buchstabe ist (Leerzeichen, "&" und "?" aus kopierten URLs,
-# Klammern, Anfuehrungszeichen). Buchstaben bleiben stehen: ein verworfenes
-# "S" oder "W" drehte stillschweigend das Vorzeichen um, dann lieber
-# unlesbar.
+# Klammern, Anfuehrungszeichen). Buchstaben bleiben stehen und werden als
+# Himmelsrichtung gelesen, siehe _mit_richtung().
 _ZAHL = r"(-?\d+[.,]\d+)"
 _ORT = re.compile(r"^" + _ZAHL + r"(?:\s*[,;]\s*|\s+)" + _ZAHL + r"$")
 _RAND_VORN = re.compile(r"^[^0-9A-Za-z-]+")
@@ -144,6 +143,74 @@ _GOOGLE = [
     ),
     re.compile(r"@" + _PUNKT + r"\s*,\s*" + _PUNKT),
 ]
+
+
+# Himmelsrichtungen, vor oder hinter der Zahl, dazu Grad/Minuten/Sekunden,
+# wie Google Maps sie anzeigt (51°17'14.8"N 6°21'13.7"E). N/S legt die
+# Breite fest, E/O/W die Laenge, S und W machen sie negativ. Gelesen wird
+# nur, was eindeutig ist: kein Minuszeichen zusaetzlich zur Richtung, keine zwei
+# Breiten, Minuten und Sekunden unter 60.
+_R = r"([NSEOW])"
+_WERT = (
+    r"(?:(\d+)\s*[°º˚]\s*"
+    r"(?:(\d+(?:[.,]\d+)?)\s*['′’´]\s*"
+    r"(?:(\d+(?:[.,]\d+)?)\s*(?:[\"″”]|'')?)?)?"
+    r"|(-?\d+(?:[.,]\d+)?)\s*[°º˚]?)"
+)
+_TRENNER = r"(?:\s*[,;]\s*|\s+)"
+_RICHTUNG = [
+    re.compile(r"^" + _R + r"\s*" + _WERT + _TRENNER + _R + r"?\s*" + _WERT + r"$", re.I),
+    re.compile(r"^" + _R + r"?\s*" + _WERT + _TRENNER + _R + r"\s*" + _WERT + r"$", re.I),
+    re.compile(r"^" + _WERT + r"\s*" + _R + r"?" + _TRENNER + _WERT + r"\s*" + _R + r"?$", re.I),
+]
+
+
+def _zahl(z):
+    return float(z.replace(",", "."))
+
+
+def _teil(richtung, grad, minuten, sekunden, dezimal):
+    """Ein Wert mit Himmelsrichtung als (Achse, Zahl), Achse None/lat/lon."""
+    if dezimal is not None:
+        wert = _zahl(dezimal)
+        # Ganze Zahlen nur mit Richtung, sonst waere "51,6" nicht eindeutig
+        if not re.search(r"[.,]", dezimal) and not richtung:
+            return None
+    else:
+        m = _zahl(minuten) if minuten else 0.0
+        sek = _zahl(sekunden) if sekunden else 0.0
+        if m >= 60 or sek >= 60:
+            return None
+        wert = int(grad) + m / 60 + sek / 3600
+    if not richtung:
+        return None, wert
+    # Minus und Richtung zugleich widersprechen sich oder sind doppelt
+    if wert < 0:
+        return None
+    richtung = richtung.upper()
+    if richtung in "SW":
+        wert = -wert
+    return ("lat" if richtung in "NS" else "lon"), wert
+
+
+def _mit_richtung(text):
+    for muster in _RICHTUNG:
+        m = muster.match(text)
+        if not m:
+            continue
+        g = m.groups()
+        if muster is _RICHTUNG[2]:
+            a, b = _teil(g[4], *g[0:4]), _teil(g[9], *g[5:9])
+        else:
+            a, b = _teil(g[0], *g[1:5]), _teil(g[5], *g[6:10])
+        if a is None or b is None:
+            return None
+        if a[0] and a[0] == b[0]:
+            return None
+        if a[0] == "lon" or b[0] == "lat":
+            a, b = b, a
+        return _pruefen(a[1], b[1])
+    return None
 
 
 def _pruefen(lat, lon):
@@ -168,7 +235,7 @@ def parse_location(text):
     text = _RAND_HINTEN.sub("", _RAND_VORN.sub("", text))
     m = _ORT.match(text)
     if not m:
-        return None
+        return _mit_richtung(text)
     lat, lon = (float(z.replace(",", ".")) for z in m.groups())
     return _pruefen(lat, lon)
 

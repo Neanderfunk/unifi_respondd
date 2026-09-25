@@ -23,8 +23,12 @@ gelesen, nie mehr als Adresse bei Nominatim nachgeschlagen.
 Lesbar sind im Feld SNMP Location unter anderem `51.2874, 6.3538`,
 `51,2874 6,3538`, `51,2874,6,3538`, dazu Leerzeichen, `&`, `?`, Klammern
 und Anführungszeichen an den Rändern sowie aus Google Maps kopierte Adressen
-(`!3d…!4d…`, `?q=…`, `/@…,17z`). Buchstaben wie `N` oder `W` machen das Feld
-unlesbar, statt stillschweigend das Vorzeichen zu verlieren.
+(`!3d…!4d…`, `?q=…`, `/@…,17z`). Himmelsrichtungen vor oder hinter der Zahl
+(`51.2874 N, 6.3538 E`, `O` für Ost) und Grad/Minuten/Sekunden
+(`51°17'14.8"N 6°21'13.7"E`) gehen ebenfalls; mit Richtung darf die
+Reihenfolge vertauscht sein. Unlesbar bleibt nur, was sich widerspricht
+(Minus und Richtung zugleich, zwei Breiten, Minuten ab 60) und Kurzlinks
+ohne Koordinaten.
 
 Lizenz wie das Original: GPL-3.0.
 

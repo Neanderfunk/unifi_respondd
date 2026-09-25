@@ -389,9 +389,6 @@ class TestParseLocation:
             "91.0, 6.35",
             "51.28, 181.0",
             "51.28, 6.35, 12.0",
-            "51.28 N, 6.35 E",
-            "51.28, 6.35 W",
-            "S 51.28, 6.35",
             "lat=51.28&lon=6.35",
             "&?",
         ],
@@ -426,6 +423,50 @@ class TestParseLocation:
     def test_google_ohne_koordinaten(self):
         assert parse_location("https://www.google.com/maps/place/Bedburg-Hau") is None
         assert parse_location("https://maps.app.goo.gl/AbCdEf123") is None
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "51.287448314 N, 6.353809834 E",
+            "N 51.287448314, E 6.353809834",
+            "51.287448314N 6.353809834E",
+            "n51.287448314 e6.353809834",
+            "6.353809834 E, 51.287448314 N",
+            "51,287448314° N 6,353809834° O",
+            "51.287448314 N, 6.353809834",
+            "51.287448314, 6.353809834 E",
+            "51°17.24690' N 6°21.22858' E",
+            "51°17'14.81\"N 6°21'13.72\"E",
+            "51° 17′ 14.81″ N, 6° 21′ 13.72″ E",
+            "51°17'14.81\" 6°21'13.72\"",
+        ],
+    )
+    def test_himmelsrichtungen(self, text):
+        lat, lon = parse_location(text)
+        assert lat == pytest.approx(51.287448314, abs=1e-5)
+        assert lon == pytest.approx(6.353809834, abs=1e-5)
+
+    def test_westlich_und_suedlich(self):
+        assert parse_location("51.5 N, 0.12 W") == (51.5, -0.12)
+        assert parse_location("0.12 W, 51.5 N") == (51.5, -0.12)
+        assert parse_location("51.28, 6.35 W") == (51.28, -6.35)
+        assert parse_location("S 33.8688, E 151.2093") == (-33.8688, 151.2093)
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "-0.12 W, 51.5 N",
+            "51.28 N, -6.35 E",
+            "51.28 N 6.35 N",
+            "6.35 E 7.1 W",
+            "51°75' N, 6°21' E",
+            "51°17'61\" N, 6°21' E",
+            "51 N, 6",
+            "51.28 X, 6.35 E",
+        ],
+    )
+    def test_himmelsrichtung_widerspruechlich(self, text):
+        assert parse_location(text) is None
 
     def test_keine_adresssuche(self):
         import unifi_respondd.unifi_client as uc
