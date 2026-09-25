@@ -150,10 +150,12 @@ class WirelessInfo:
 
     frequency: int
     # noise: int
-    # active: int
-    # busy: int
     rx: int
     tx: int
+    # Lokaler Zusatz (Neanderfunk): Airtime-Zaehler in Millisekunden wie bei
+    # Gluon; yanic bildet aus zwei Abfragen die Auslastung in Prozent.
+    active: int = 0
+    busy: int = 0
 
 
 @dataclasses.dataclass
@@ -320,6 +322,44 @@ class ResponddClient:
             elif channel < 14:
                 return 2407 + (channel) * 5
 
+    def airtime_zaehler(self, ap):
+        """Lokaler Zusatz (Neanderfunk): Kanalauslastung als Airtime-Zaehler.
+
+        Gluon meldet je Funkmodul fortlaufende Zaehler (active, busy, rx, tx
+        in Millisekunden), yanic rechnet aus der Differenz zweier Abfragen die
+        Auslastung in Prozent. Der Controller liefert stattdessen Prozente
+        (cu_total, cu_self_rx, cu_self_tx). Hier laufen die Zaehler mit der
+        Uhr weiter, jeweils mit dem zuletzt bekannten Prozentwert; die
+        Differenz, die yanic bildet, ergibt so genau diese Prozente. Der
+        Controller erneuert die Werte nur alle paar Minuten, als Anhaltspunkt
+        reicht das (adorfer 25.09.2026).
+        """
+        zaehler = self.__dict__.setdefault("_airtime", {})
+        jetzt = time.monotonic()
+        infos = []
+        for band, (kanal, gesamt, rx, tx) in sorted(ap.airtime.items()):
+            z = zaehler.get((ap.mac, band))
+            if z is None:
+                z = zaehler[(ap.mac, band)] = {
+                    "zeit": jetzt, "active": 0.0, "busy": 0.0, "rx": 0.0, "tx": 0.0
+                }
+            ms = (jetzt - z["zeit"]) * 1000
+            z["zeit"] = jetzt
+            z["active"] += ms
+            z["busy"] += ms * min(gesamt, 100) / 100
+            z["rx"] += ms * min(rx, 100) / 100
+            z["tx"] += ms * min(tx, 100) / 100
+            infos.append(
+                WirelessInfo(
+                    frequency=self.frequency_from_channel(kanal),
+                    active=int(z["active"]),
+                    busy=int(z["busy"]),
+                    rx=int(z["rx"]),
+                    tx=int(z["tx"]),
+                )
+            )
+        return infos
+
     def getStatistics(self):
         """This method returns the statistics information of all APs."""
         aps = self._aps
@@ -327,7 +367,14 @@ class ResponddClient:
         for ap in aps.accesspoints:
             wirelessinfos = []
 
-            if ap.channel5:
+            # Lokaler Zusatz (Neanderfunk): mit Kanalauslastung aus dem
+            # Controller echte Airtime; die Bytezaehler, die hier bisher als
+            # rx/tx standen, sind keine Airtime.
+            if getattr(ap, "airtime", None):
+                wirelessinfos = self.airtime_zaehler(ap)
+            nur_kanal = not wirelessinfos
+
+            if nur_kanal and ap.channel5:
                 frequency5 = self.frequency_from_channel(ap.channel5)
                 wirelessinfos.append(
                     WirelessInfo(
@@ -337,7 +384,7 @@ class ResponddClient:
                     )
                 )
 
-            if ap.channel24:
+            if nur_kanal and ap.channel24:
                 frequency24 = self.frequency_from_channel(ap.channel24)
                 wirelessinfos.append(
                     WirelessInfo(

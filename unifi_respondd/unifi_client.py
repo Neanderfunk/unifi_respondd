@@ -3,7 +3,7 @@
 import dataclasses
 import json
 import re
-from typing import List
+from typing import Dict, List, Tuple
 from urllib.parse import unquote
 
 from pyunifi.controller import Controller
@@ -66,6 +66,11 @@ class Accesspoint:
     gateway_nexthop: str
     neighbour_macs: List[str]
     domain_code: str
+    # Lokaler Zusatz (Neanderfunk): je Band ("ng", "na") Kanal und
+    # Kanalauslastung in Prozent (gesamt, eigener Empfang, eigenes Senden)
+    airtime: Dict[str, Tuple[int, float, float, float]] = dataclasses.field(
+        default_factory=dict
+    )
 
 
 @dataclasses.dataclass
@@ -114,6 +119,31 @@ def get_ap_channel_usage(ssids, cfg):
                 tx_bytes24 = tx_bytes
 
     return channel5, rx_bytes5, tx_bytes5, channel24, rx_bytes24, tx_bytes24
+
+
+def get_ap_airtime(ap):
+    """Lokaler Zusatz (Neanderfunk): Kanalauslastung je Band aus dem Controller.
+
+    radio_table_stats nennt je Funkmodul cu_total (Kanal belegt, samt
+    fremder Netze), cu_self_rx und cu_self_tx in Prozent. 6 GHz ("6e") bleibt
+    vorerst draussen: yanic kennt nur 11g und 11a, ein drittes Band
+    ueberschriebe die 5-GHz-Werte.
+    """
+    ergebnis = {}
+    for radio in ap.get("radio_table_stats") or []:
+        band = radio.get("radio")
+        if band not in ("ng", "na"):
+            continue
+        try:
+            ergebnis[band] = (
+                int(radio["channel"]),
+                float(radio["cu_total"]),
+                float(radio.get("cu_self_rx") or 0),
+                float(radio.get("cu_self_tx") or 0),
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    return ergebnis
 
 
 # Lokaler Zusatz (Neanderfunk): Koordinaten nur aus dem Feld selbst, keine
@@ -419,6 +449,7 @@ def get_infos():
                             gateway_nexthop=offloader_id,
                             neighbour_macs=neighbour_macs,
                             domain_code=offloader.get("domain", cfg.fallback_domain),
+                            airtime=get_ap_airtime(ap),
                         )
                     )
     return aps
