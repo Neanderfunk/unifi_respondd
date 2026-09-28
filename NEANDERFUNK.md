@@ -35,10 +35,13 @@ ohne Koordinaten.
 
 Lizenz wie das Original: GPL-3.0.
 
-Aktualisieren auf einen neuen Upstream-Stand:
+Aktualisieren auf einen neuen Upstream-Stand, per Merge, nicht per Rebase:
+auf die Commits dieses Zweigs verweisen veröffentlichte Links (etwa aus
+Forenbeiträgen), ein Rebase würde ihre IDs ändern und einen Force-Push
+brauchen (Regel seit 28.09.2026; bis dahin gab es upstream nichts Neues).
 
 ```bash
 git fetch upstream
-git rebase <neuer-upstream-commit> neanderfunk
+git merge upstream/main
 python -m pytest tests
 ```
