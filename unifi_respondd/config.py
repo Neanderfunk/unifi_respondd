@@ -61,6 +61,10 @@ class Config:
     # einzelne Anfrage den Controller komplett ab, bei 48 Schnittstellen also
     # 48-mal je Sammelrunde.
     cache_seconds: int = 60
+    # Rahmen [sued, west, nord, ost] fuer die Ortsangaben der APs. Liegt ein
+    # Ort ausserhalb, der mit getauschter Breite und Laenge aber innerhalb,
+    # gilt der getauschte. Leer heisst: keine Pruefung.
+    location_bbox: List[float] = dataclasses.field(default_factory=list)
 
     @classmethod
     def from_dict(cls, cfg: Dict[str, str]) -> "Config":
@@ -92,6 +96,7 @@ class Config:
             offloader_by_ap=cfg.get("offloader_by_ap", ""),
             interfaces=cfg.get("interfaces") or {},
             cache_seconds=int(cfg.get("cache_seconds", 60)),
+            location_bbox=[float(x) for x in (cfg.get("location_bbox") or [])],
         )
 
 

@@ -278,6 +278,28 @@ def scrape(url):
         logger.error("Error: %s" % (ex))
 
 
+def ort_im_rahmen(ort, rahmen, name=""):
+    """Gleicht einen Ort (Breite, Laenge) mit dem Rahmen [sued, west, nord,
+    ost] ab. Liegt er ausserhalb, der mit getauschter Breite und Laenge aber
+    innerhalb, gilt der getauschte; das wird protokolliert. In allen anderen
+    Faellen, auch ohne Rahmen, bleibt der Ort, wie er ist."""
+    if not ort or not isinstance(rahmen, (list, tuple)) or len(rahmen) != 4:
+        return ort
+    sued, west, nord, ost = rahmen
+
+    def drin(breite, laenge):
+        return sued <= breite <= nord and west <= laenge <= ost
+
+    breite, laenge = ort
+    if drin(breite, laenge) or not drin(laenge, breite):
+        return ort
+    logger.warning(
+        "%s: Ort %s, %s liegt ausserhalb des Rahmens, getauscht %s, %s"
+        % (name, breite, laenge, laenge, breite)
+    )
+    return laenge, breite
+
+
 def load_offloader_by_ap(path):
     """Lokaler Zusatz (Neanderfunk): Router je Accesspoint aus einer Datei.
 
@@ -387,7 +409,11 @@ def get_infos():
                     # Kartenausschnitt bis nach Afrika auf.
                     lat, lon = None, None
                     neighbour_macs = []
-                    ort = parse_location(ap.get("snmp_location"))
+                    ort = ort_im_rahmen(
+                        parse_location(ap.get("snmp_location")),
+                        cfg.location_bbox,
+                        ap.get("name", ap.get("mac", "")),
+                    )
                     if ort:
                         lat, lon = ort
                     # Lokaler Zusatz (Neanderfunk): gemessener Router je AP vor
