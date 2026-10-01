@@ -3,11 +3,13 @@
 import dataclasses
 import json
 import re
+import warnings
 from typing import Dict, List, Tuple
 from urllib.parse import unquote
 
 from pyunifi.controller import Controller
 from requests import get as rget
+from urllib3.exceptions import InsecureRequestWarning
 
 from unifi_respondd import config, logger
 
@@ -396,17 +398,29 @@ def get_infos():
     return aps if erreicht else None
 
 
+def _anmelden(zugang, **weitere):
+    """Controller anmelden. Ist ssl_verify bewusst aus (selbstsigniert, etwa
+    hinter einem Tunnel), ist die Warnung je Abfrage nur Rauschen im Log;
+    pyunifi setzt den Filter bei jeder Anmeldung auf "default" zurueck,
+    deshalb danach jedes Mal neu."""
+    c = Controller(
+        host=zugang.controller_url,
+        username=zugang.username,
+        password=zugang.password,
+        port=zugang.controller_port,
+        version=zugang.version,
+        ssl_verify=zugang.ssl_verify,
+        **weitere,
+    )
+    if not zugang.ssl_verify:
+        warnings.filterwarnings("ignore", category=InsecureRequestWarning)
+    return c
+
+
 def _aps_von(zugang, cfg, ffnodes, offloader_by_ap):
     """Die APs eines Controllers; None, wenn er nicht erreichbar ist."""
     try:
-        c = Controller(
-            host=zugang.controller_url,
-            username=zugang.username,
-            password=zugang.password,
-            port=zugang.controller_port,
-            version=zugang.version,
-            ssl_verify=zugang.ssl_verify,
-        )
+        c = _anmelden(zugang)
     except Exception as ex:
         logger.error("Error: %s: %s" % (zugang.name, ex))
         return None
@@ -418,15 +432,7 @@ def _aps_von(zugang, cfg, ffnodes, offloader_by_ap):
     aps = Accesspoints(accesspoints=[])
     for site in sites:
         if zugang.version == "UDMP-unifiOS":
-            c = Controller(
-                host=zugang.controller_url,
-                username=zugang.username,
-                password=zugang.password,
-                port=zugang.controller_port,
-                version=zugang.version,
-                site_id=site["name"],
-                ssl_verify=zugang.ssl_verify,
-            )
+            c = _anmelden(zugang, site_id=site["name"])
         else:
             try:
                 c.switch_site(site["desc"])
