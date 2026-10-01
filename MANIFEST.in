@@ -1,4 +1,4 @@
 include README.md
 include docs/*
 include respondd.py
-include *.example
+include *.exampleinclude unifi_respondd/modelle.json

@@ -71,6 +71,10 @@ class Config:
     # version und ssl_verify gelten wie oben, wenn sie fehlen. Leer heisst:
     # nur der eine Controller, wie bisher.
     controllers: List[Dict[str, Any]] = dataclasses.field(default_factory=list)
+    # Lokaler Zusatz (Neanderfunk): Modell als Namen ("Ubiquiti UniFi AC
+    # Mesh") statt als internen Code des Controllers ("U7MSH"), aus
+    # modelle.json. Aus heisst: der Code, wie bisher.
+    model_names: bool = False
 
     @classmethod
     def from_dict(cls, cfg: Dict[str, str]) -> "Config":
@@ -104,6 +108,7 @@ class Config:
             cache_seconds=int(cfg.get("cache_seconds", 60)),
             location_bbox=[float(x) for x in (cfg.get("location_bbox") or [])],
             controllers=list(cfg.get("controllers") or []),
+            model_names=bool(cfg.get("model_names", False)),
         )
 
 

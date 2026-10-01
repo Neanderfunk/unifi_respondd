@@ -2,8 +2,10 @@
 
 import dataclasses
 import json
+import os
 import re
 import warnings
+from functools import lru_cache
 from typing import Dict, List, Tuple
 from urllib.parse import unquote
 
@@ -302,6 +304,28 @@ def ort_im_rahmen(ort, rahmen, name=""):
     return laenge, breite
 
 
+MODELLE = os.path.join(os.path.dirname(__file__), "modelle.json")
+
+
+@lru_cache(maxsize=1)
+def _modelle():
+    try:
+        with open(MODELLE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError) as ex:
+        logger.error("modelle.json: %s" % ex)
+        return {}
+
+
+def modellname(code, cfg):
+    """Lokaler Zusatz (Neanderfunk): Name statt Code des Controllers, wenn
+    model_names an ist (werkzeug/modelle-erzeugen.py). Unbekannte Codes
+    bleiben, wie sie sind."""
+    if getattr(cfg, "model_names", False) is not True or not code:
+        return code
+    return _modelle().get(code, code)
+
+
 def load_offloader_by_ap(path):
     """Lokaler Zusatz (Neanderfunk): Router je Accesspoint aus einer Datei.
 
@@ -538,7 +562,7 @@ def _aps_von(zugang, cfg, ffnodes, offloader_by_ap):
                             tx_bytes24=tx_bytes24,
                             latitude=lat,
                             longitude=lon,
-                            model=ap.get("model", None),
+                            model=modellname(ap.get("model", None), cfg),
                             firmware=ap.get("version", None),
                             uptime=ap.get("uptime", None),
                             contact=ap.get("snmp_contact", None),
