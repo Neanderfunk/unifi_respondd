@@ -18,6 +18,7 @@ also einzeln übernehmen oder bei einem Upstream-Update einzeln nachziehen.
 | Port 1001 teilen | `SO_REUSEADDR`, damit mesh-announce für den Rechner selbst daneben laufen kann |
 | Sendefehler beenden nicht den Dienst | ein Paket, das nicht rausgeht, wird protokolliert statt den Prozess zu beenden |
 | Mehrere Controller (`controllers`) | weitere Controller neben dem ersten, je mit eigenem Router je Site; fällt einer aus, kommen die APs der anderen trotzdem |
+| Keine Zertifikatswarnung bei `ssl_verify` aus | bewusst abgeschaltete Prüfung (selbstsigniert, hinter einem Tunnel) schreibt nicht mehr je Anfrage eine Warnung ins Log |
 
 Alle neuen Konfigurationsschlüssel sind optional. Ohne sie verhält sich der
 Zweig wie das Original, mit zwei Ausnahmen: APs ohne Koordinaten bekommen
