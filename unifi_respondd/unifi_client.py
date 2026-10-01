@@ -400,18 +400,20 @@ def get_infos():
 
 def _anmelden(zugang, **weitere):
     """Controller anmelden. Ist ssl_verify bewusst aus (selbstsigniert, etwa
-    hinter einem Tunnel), ist die Warnung je Abfrage nur Rauschen im Log;
-    pyunifi setzt den Filter bei jeder Anmeldung auf "default" zurueck,
-    deshalb danach jedes Mal neu."""
-    c = Controller(
-        host=zugang.controller_url,
-        username=zugang.username,
-        password=zugang.password,
-        port=zugang.controller_port,
-        version=zugang.version,
-        ssl_verify=zugang.ssl_verify,
-        **weitere,
-    )
+    hinter einem Tunnel), ist die Warnung je Abfrage nur Rauschen im Log.
+    pyunifi setzt den Filter bei jeder Anmeldung auf "default" und meldet
+    sich gleich darauf an; die Warnungen dieser Anmeldung werden deshalb
+    aufgefangen, danach gilt der Filter fuer die weiteren Abfragen."""
+    with warnings.catch_warnings(record=not zugang.ssl_verify):
+        c = Controller(
+            host=zugang.controller_url,
+            username=zugang.username,
+            password=zugang.password,
+            port=zugang.controller_port,
+            version=zugang.version,
+            ssl_verify=zugang.ssl_verify,
+            **weitere,
+        )
     if not zugang.ssl_verify:
         warnings.filterwarnings("ignore", category=InsecureRequestWarning)
     return c
