@@ -17,11 +17,28 @@ also einzeln übernehmen oder bei einem Upstream-Update einzeln nachziehen.
 | Airtime aus dem Controller | Kanalauslastung je Band (cu_total, cu_self_rx/tx) als Airtime-Zähler wie bei Gluon; vorher standen Bytezähler in den Airtime-Feldern |
 | Port 1001 teilen | `SO_REUSEADDR`, damit mesh-announce für den Rechner selbst daneben laufen kann |
 | Sendefehler beenden nicht den Dienst | ein Paket, das nicht rausgeht, wird protokolliert statt den Prozess zu beenden |
+| Mehrere Controller (`controllers`) | weitere Controller neben dem ersten, je mit eigenem Router je Site; fällt einer aus, kommen die APs der anderen trotzdem |
 
 Alle neuen Konfigurationsschlüssel sind optional. Ohne sie verhält sich der
 Zweig wie das Original, mit zwei Ausnahmen: APs ohne Koordinaten bekommen
 keinen Ort statt 0/0, und das Feld SNMP Location wird nur noch als Koordinate
 gelesen, nie mehr als Adresse bei Nominatim nachgeschlagen.
+
+Weitere Controller stehen unter `controllers`; Port, Version und
+`ssl_verify` gelten wie beim ersten, wenn sie fehlen. `offloader_mac` gilt nur
+für den eigenen Controller, Site-Namen wie `Default` kommen bei jedem vor:
+
+```yaml
+controllers:
+  - name: Beispiel
+    controller_url: 192.0.2.10
+    username: leser
+    password: geheim
+    version: UDMP-unifiOS
+    ssl_verify: false
+    offloader_mac:
+      Default: "80:af:ca:00:00:01"
+```
 
 Lesbar sind im Feld SNMP Location unter anderem `51.2874, 6.3538`,
 `51,2874 6,3538`, `51,2874,6,3538`, dazu Leerzeichen, `&`, `?`, Klammern

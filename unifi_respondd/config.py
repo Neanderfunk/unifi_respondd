@@ -65,6 +65,12 @@ class Config:
     # Ort ausserhalb, der mit getauschter Breite und Laenge aber innerhalb,
     # gilt der getauschte. Leer heisst: keine Pruefung.
     location_bbox: List[float] = dataclasses.field(default_factory=list)
+    # Lokaler Zusatz (Neanderfunk): weitere Controller neben dem oben
+    # angegebenen. Je Eintrag name, controller_url, username, password und
+    # offloader_mac (Router je Site dieses Controllers); controller_port,
+    # version und ssl_verify gelten wie oben, wenn sie fehlen. Leer heisst:
+    # nur der eine Controller, wie bisher.
+    controllers: List[Dict[str, Any]] = dataclasses.field(default_factory=list)
 
     @classmethod
     def from_dict(cls, cfg: Dict[str, str]) -> "Config":
@@ -97,6 +103,7 @@ class Config:
             interfaces=cfg.get("interfaces") or {},
             cache_seconds=int(cfg.get("cache_seconds", 60)),
             location_bbox=[float(x) for x in (cfg.get("location_bbox") or [])],
+            controllers=list(cfg.get("controllers") or []),
         )
 
 

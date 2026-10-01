@@ -326,34 +326,106 @@ def load_offloader_by_ap(path):
     }
 
 
+@dataclasses.dataclass
+class Zugang:
+    """Lokaler Zusatz (Neanderfunk): ein Controller und der Router je Site."""
+
+    name: str
+    controller_url: str
+    controller_port: int
+    username: str
+    password: str
+    version: str
+    ssl_verify: bool
+    offloader_mac: Dict[str, str]
+
+
+def zugaenge(cfg):
+    """Lokaler Zusatz (Neanderfunk): der Controller aus der Konfiguration und
+    die aus "controllers". Fehlt einem Eintrag Port, Version oder
+    ssl_verify, gilt der Wert des ersten Controllers. Die Router je Site
+    gelten nur fuer ihren Controller, Site-Namen wie "Default" kommen bei
+    jedem vor."""
+    erster = Zugang(
+        name=cfg.controller_url,
+        controller_url=cfg.controller_url,
+        controller_port=cfg.controller_port,
+        username=cfg.username,
+        password=cfg.password,
+        version=cfg.version,
+        ssl_verify=cfg.ssl_verify,
+        offloader_mac=cfg.offloader_mac,
+    )
+    weitere = getattr(cfg, "controllers", None)
+    liste = [erster]
+    for e in weitere if isinstance(weitere, list) else []:
+        try:
+            liste.append(
+                Zugang(
+                    name=str(e.get("name") or e["controller_url"]),
+                    controller_url=e["controller_url"],
+                    controller_port=e.get("controller_port", cfg.controller_port),
+                    username=e["username"],
+                    password=e["password"],
+                    version=e.get("version", cfg.version),
+                    ssl_verify=e.get("ssl_verify", cfg.ssl_verify),
+                    offloader_mac=e.get("offloader_mac") or {},
+                )
+            )
+        except (AttributeError, KeyError, TypeError) as ex:
+            logger.error("controllers: unvollstaendiger Eintrag (%s)" % ex)
+    return liste
+
+
 def get_infos():
-    """This function gathers all the information and returns a list of Accesspoint objects."""
+    """This function gathers all the information and returns a list of Accesspoint objects.
+
+    Lokaler Zusatz (Neanderfunk): von allen Controllern. Faellt einer aus,
+    kommen die APs der anderen trotzdem; nur wenn keiner erreichbar ist,
+    gibt es None und der Aufrufer behaelt seinen letzten Stand."""
     cfg = config.Config.from_dict(config.load_config())
     ffnodes = scrape(cfg.nodelist)
-    try:
-        c = Controller(
-            host=cfg.controller_url,
-            username=cfg.username,
-            password=cfg.password,
-            port=cfg.controller_port,
-            version=cfg.version,
-            ssl_verify=cfg.ssl_verify,
-        )
-    except Exception as ex:
-        logger.error("Error: %s" % (ex))
-        return
     offloader_by_ap = load_offloader_by_ap(cfg.offloader_by_ap)
     aps = Accesspoints(accesspoints=[])
-    for site in c.get_sites():
-        if cfg.version == "UDMP-unifiOS":
+    erreicht = False
+    for zugang in zugaenge(cfg):
+        gefunden = _aps_von(zugang, cfg, ffnodes, offloader_by_ap)
+        if gefunden is not None:
+            erreicht = True
+            aps.accesspoints.extend(gefunden)
+    return aps if erreicht else None
+
+
+def _aps_von(zugang, cfg, ffnodes, offloader_by_ap):
+    """Die APs eines Controllers; None, wenn er nicht erreichbar ist."""
+    try:
+        c = Controller(
+            host=zugang.controller_url,
+            username=zugang.username,
+            password=zugang.password,
+            port=zugang.controller_port,
+            version=zugang.version,
+            ssl_verify=zugang.ssl_verify,
+        )
+    except Exception as ex:
+        logger.error("Error: %s: %s" % (zugang.name, ex))
+        return None
+    try:
+        sites = c.get_sites()
+    except Exception as ex:
+        logger.error("Error: %s: %s" % (zugang.name, ex))
+        return None
+    aps = Accesspoints(accesspoints=[])
+    for site in sites:
+        if zugang.version == "UDMP-unifiOS":
             c = Controller(
-                host=cfg.controller_url,
-                username=cfg.username,
-                password=cfg.password,
-                port=cfg.controller_port,
-                version=cfg.version,
+                host=zugang.controller_url,
+                username=zugang.username,
+                password=zugang.password,
+                port=zugang.controller_port,
+                version=zugang.version,
                 site_id=site["name"],
-                ssl_verify=cfg.ssl_verify,
+                ssl_verify=zugang.ssl_verify,
             )
         else:
             try:
@@ -420,7 +492,7 @@ def get_infos():
                     # dem Router der Site
                     offloader_mac = offloader_by_ap.get(
                         (ap.get("mac") or "").lower()
-                    ) or cfg.offloader_mac.get(site["desc"], "")
+                    ) or zugang.offloader_mac.get(site["desc"], "")
                     try:
                         neighbour_macs.append(offloader_mac or None)
                         offloader_id = offloader_mac.replace(":", "")
@@ -478,7 +550,7 @@ def get_infos():
                             airtime=get_ap_airtime(ap),
                         )
                     )
-    return aps
+    return aps.accesspoints
 
 
 def main():
